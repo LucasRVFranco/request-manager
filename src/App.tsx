@@ -3,6 +3,7 @@ import { Sidebar } from "./components/Sidebar";
 import { TabBar } from "./components/TabBar";
 import { RequestEditor } from "./components/RequestEditor";
 import { ResponseViewer } from "./components/ResponseViewer";
+import { EnvironmentBar } from "./components/EnvironmentBar";
 import "./App.css";
 
 function Workspace() {
@@ -13,6 +14,7 @@ function Workspace() {
     <div className="app-shell">
       <Sidebar />
       <div className="main-pane">
+        <EnvironmentBar />
         <TabBar />
         {activeRequest ? (
           <>

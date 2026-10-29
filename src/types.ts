@@ -23,6 +23,12 @@ export interface Collection {
   name: string;
 }
 
+export interface Environment {
+  id: string;
+  name: string;
+  variables: KeyValueRow[];
+}
+
 export type RequestEditorTab = "params" | "headers" | "body";
 
 export type ResponseState =

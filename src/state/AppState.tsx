@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useReducer, type ReactNode } from "react";
-import type { Collection, KeyValueRow, RequestItem, RequestEditorTab, ResponseState } from "../types";
+import type { Collection, Environment, KeyValueRow, RequestItem, RequestEditorTab, ResponseState } from "../types";
 import { loadPersisted, savePersisted, type PersistedData } from "./persistence";
 
 function newId(): string {
@@ -10,7 +10,7 @@ function emptyRow(): KeyValueRow {
   return { id: newId(), key: "", value: "", enabled: true };
 }
 
-function seed(): { collections: Collection[]; requests: RequestItem[] } {
+function seed(): { collections: Collection[]; requests: RequestItem[]; environments: Environment[] } {
   const collectionId = newId();
   const collection: Collection = { id: collectionId, name: "Exemplo" };
   const request: RequestItem = {
@@ -18,17 +18,24 @@ function seed(): { collections: Collection[]; requests: RequestItem[] } {
     collectionId,
     name: "Listar posts",
     method: "GET",
-    url: "https://jsonplaceholder.typicode.com/posts/1",
+    url: "{{base_url}}/posts/1",
     params: [emptyRow()],
     headers: [emptyRow()],
     body: "",
   };
-  return { collections: [collection], requests: [request] };
+  const environment: Environment = {
+    id: newId(),
+    name: "Dev",
+    variables: [{ id: newId(), key: "base_url", value: "https://jsonplaceholder.typicode.com", enabled: true }, emptyRow()],
+  };
+  return { collections: [collection], requests: [request], environments: [environment] };
 }
 
 interface AppStateShape {
   collections: Collection[];
   requests: RequestItem[];
+  environments: Environment[];
+  activeEnvironmentId: string | null;
   openTabIds: string[];
   activeTabId: string | null;
   activeEditorTab: RequestEditorTab;
@@ -48,6 +55,11 @@ type Action =
   | { type: "SET_EDITOR_TAB"; tab: RequestEditorTab }
   | { type: "UPDATE_REQUEST"; requestId: string; patch: Partial<RequestItem> }
   | { type: "SET_RESPONSE"; requestId: string; response: ResponseState }
+  | { type: "ADD_ENVIRONMENT"; name: string }
+  | { type: "RENAME_ENVIRONMENT"; environmentId: string; name: string }
+  | { type: "DELETE_ENVIRONMENT"; environmentId: string }
+  | { type: "SET_ENVIRONMENT_VARIABLES"; environmentId: string; variables: KeyValueRow[] }
+  | { type: "SET_ACTIVE_ENVIRONMENT"; environmentId: string | null }
   | { type: "HYDRATE"; data: PersistedData | null };
 
 function reducer(state: AppStateShape, action: Action): AppStateShape {
@@ -119,14 +131,40 @@ function reducer(state: AppStateShape, action: Action): AppStateShape {
     }
     case "SET_RESPONSE":
       return { ...state, responses: { ...state.responses, [action.requestId]: action.response } };
+    case "ADD_ENVIRONMENT": {
+      const environment: Environment = { id: newId(), name: action.name, variables: [emptyRow()] };
+      return { ...state, environments: [...state.environments, environment] };
+    }
+    case "RENAME_ENVIRONMENT": {
+      const environments = state.environments.map((e) =>
+        e.id === action.environmentId ? { ...e, name: action.name } : e,
+      );
+      return { ...state, environments };
+    }
+    case "DELETE_ENVIRONMENT": {
+      const environments = state.environments.filter((e) => e.id !== action.environmentId);
+      const activeEnvironmentId =
+        state.activeEnvironmentId === action.environmentId ? null : state.activeEnvironmentId;
+      return { ...state, environments, activeEnvironmentId };
+    }
+    case "SET_ENVIRONMENT_VARIABLES": {
+      const environments = state.environments.map((e) =>
+        e.id === action.environmentId ? { ...e, variables: action.variables } : e,
+      );
+      return { ...state, environments };
+    }
+    case "SET_ACTIVE_ENVIRONMENT":
+      return { ...state, activeEnvironmentId: action.environmentId };
     case "HYDRATE": {
       if (!action.data) return { ...state, hydrated: true };
-      const { collections, requests } = action.data;
+      const { collections, requests, environments, activeEnvironmentId } = action.data;
       const firstId = requests[0]?.id ?? null;
       return {
         ...state,
         collections,
         requests,
+        environments,
+        activeEnvironmentId,
         openTabIds: firstId ? [firstId] : [],
         activeTabId: firstId,
         hydrated: true,
@@ -138,10 +176,12 @@ function reducer(state: AppStateShape, action: Action): AppStateShape {
 }
 
 function initialState(): AppStateShape {
-  const { collections, requests } = seed();
+  const { collections, requests, environments } = seed();
   return {
     collections,
     requests,
+    environments,
+    activeEnvironmentId: environments[0]?.id ?? null,
     openTabIds: [requests[0].id],
     activeTabId: requests[0].id,
     activeEditorTab: "params",
@@ -165,12 +205,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!state.hydrated) return;
     const timeout = setTimeout(() => {
-      savePersisted({ collections: state.collections, requests: state.requests }).catch((err) =>
-        console.error("Falha ao salvar dados", err),
-      );
+      savePersisted({
+        collections: state.collections,
+        requests: state.requests,
+        environments: state.environments,
+        activeEnvironmentId: state.activeEnvironmentId,
+      }).catch((err) => console.error("Falha ao salvar dados", err));
     }, 300);
     return () => clearTimeout(timeout);
-  }, [state.hydrated, state.collections, state.requests]);
+  }, [state.hydrated, state.collections, state.requests, state.environments, state.activeEnvironmentId]);
 
   return (
     <StateContext.Provider value={state}>

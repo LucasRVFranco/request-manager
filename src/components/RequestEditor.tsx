@@ -1,33 +1,40 @@
-import type { HttpMethod, RequestItem, RequestEditorTab } from "../types";
+import type { HttpMethod, KeyValueRow, RequestItem, RequestEditorTab } from "../types";
 import { useAppDispatch, useAppState } from "../state/AppState";
+import { interpolate } from "../state/interpolate";
 import { KeyValueTable } from "./KeyValueTable";
 
 const METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
-function buildUrl(request: RequestItem): string {
+function buildUrl(request: RequestItem, variables: KeyValueRow[]): string {
+  const url = interpolate(request.url, variables);
   const enabledParams = request.params.filter((p) => p.enabled && p.key);
-  if (enabledParams.length === 0) return request.url;
+  if (enabledParams.length === 0) return url;
   try {
-    const url = new URL(request.url);
-    for (const p of enabledParams) url.searchParams.set(p.key, p.value);
-    return url.toString();
+    const parsed = new URL(url);
+    for (const p of enabledParams) parsed.searchParams.set(p.key, interpolate(p.value, variables));
+    return parsed.toString();
   } catch {
-    return request.url;
+    return url;
   }
 }
 
-async function sendRequest(request: RequestItem, dispatch: ReturnType<typeof useAppDispatch>) {
+async function sendRequest(
+  request: RequestItem,
+  variables: KeyValueRow[],
+  dispatch: ReturnType<typeof useAppDispatch>,
+) {
   dispatch({ type: "SET_RESPONSE", requestId: request.id, response: { status: "loading" } });
   const started = performance.now();
   try {
     const headers: Record<string, string> = {};
-    for (const h of request.headers) if (h.enabled && h.key) headers[h.key] = h.value;
+    for (const h of request.headers)
+      if (h.enabled && h.key) headers[interpolate(h.key, variables)] = interpolate(h.value, variables);
 
     const hasBody = !["GET", "HEAD"].includes(request.method);
-    const res = await fetch(buildUrl(request), {
+    const res = await fetch(buildUrl(request, variables), {
       method: request.method,
       headers,
-      body: hasBody && request.body ? request.body : undefined,
+      body: hasBody && request.body ? interpolate(request.body, variables) : undefined,
     });
     const text = await res.text();
     const responseHeaders: Record<string, string> = {};
@@ -56,8 +63,9 @@ async function sendRequest(request: RequestItem, dispatch: ReturnType<typeof use
 }
 
 export function RequestEditor({ request }: { request: RequestItem }) {
-  const { activeEditorTab } = useAppState();
+  const { activeEditorTab, environments, activeEnvironmentId } = useAppState();
   const dispatch = useAppDispatch();
+  const activeVariables = environments.find((e) => e.id === activeEnvironmentId)?.variables ?? [];
 
   function patch(fields: Partial<RequestItem>) {
     dispatch({ type: "UPDATE_REQUEST", requestId: request.id, patch: fields });
@@ -85,7 +93,7 @@ export function RequestEditor({ request }: { request: RequestItem }) {
           value={request.url}
           onChange={(e) => patch({ url: e.currentTarget.value })}
         />
-        <button className="send-button" onClick={() => sendRequest(request, dispatch)}>
+        <button className="send-button" onClick={() => sendRequest(request, activeVariables, dispatch)}>
           Enviar
         </button>
       </div>

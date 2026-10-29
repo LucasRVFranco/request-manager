@@ -122,6 +122,95 @@ body {
   min-width: 0;
 }
 
+.environment-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.environment-bar select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 6px;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  width: 560px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.modal-body {
+  padding: 12px 14px;
+  overflow: auto;
+}
+
+.environment-manager {
+  display: flex;
+  gap: 16px;
+}
+
+.environment-list {
+  width: 160px;
+  flex-shrink: 0;
+}
+
+.environment-list ul {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.environment-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.environment-list li:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.environment-list-item-active {
+  background: rgba(91, 140, 255, 0.15);
+  color: var(--accent);
+}
+
+.environment-variables {
+  flex: 1;
+  min-width: 0;
+}
+
 .tab-bar {
   display: flex;
   border-bottom: 1px solid var(--border);
