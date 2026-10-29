@@ -1,5 +1,6 @@
-import { createContext, useContext, useReducer, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useReducer, type ReactNode } from "react";
 import type { Collection, KeyValueRow, RequestItem, RequestEditorTab, ResponseState } from "../types";
+import { loadPersisted, savePersisted, type PersistedData } from "./persistence";
 
 function newId(): string {
   return crypto.randomUUID();
@@ -32,10 +33,13 @@ interface AppStateShape {
   activeTabId: string | null;
   activeEditorTab: RequestEditorTab;
   responses: Record<string, ResponseState>;
+  hydrated: boolean;
 }
 
 type Action =
   | { type: "ADD_COLLECTION"; name: string }
+  | { type: "RENAME_COLLECTION"; collectionId: string; name: string }
+  | { type: "DELETE_COLLECTION"; collectionId: string }
   | { type: "ADD_REQUEST"; collectionId: string }
   | { type: "DELETE_REQUEST"; requestId: string }
   | { type: "OPEN_REQUEST"; requestId: string }
@@ -43,13 +47,32 @@ type Action =
   | { type: "SET_ACTIVE_TAB"; requestId: string }
   | { type: "SET_EDITOR_TAB"; tab: RequestEditorTab }
   | { type: "UPDATE_REQUEST"; requestId: string; patch: Partial<RequestItem> }
-  | { type: "SET_RESPONSE"; requestId: string; response: ResponseState };
+  | { type: "SET_RESPONSE"; requestId: string; response: ResponseState }
+  | { type: "HYDRATE"; data: PersistedData | null };
 
 function reducer(state: AppStateShape, action: Action): AppStateShape {
   switch (action.type) {
     case "ADD_COLLECTION": {
       const collection: Collection = { id: newId(), name: action.name };
       return { ...state, collections: [...state.collections, collection] };
+    }
+    case "RENAME_COLLECTION": {
+      const collections = state.collections.map((c) =>
+        c.id === action.collectionId ? { ...c, name: action.name } : c,
+      );
+      return { ...state, collections };
+    }
+    case "DELETE_COLLECTION": {
+      const removedIds = new Set(
+        state.requests.filter((r) => r.collectionId === action.collectionId).map((r) => r.id),
+      );
+      const collections = state.collections.filter((c) => c.id !== action.collectionId);
+      const requests = state.requests.filter((r) => r.collectionId !== action.collectionId);
+      const openTabIds = state.openTabIds.filter((id) => !removedIds.has(id));
+      const activeTabId = removedIds.has(state.activeTabId ?? "") ? openTabIds.at(-1) ?? null : state.activeTabId;
+      const responses = { ...state.responses };
+      for (const id of removedIds) delete responses[id];
+      return { ...state, collections, requests, openTabIds, activeTabId, responses };
     }
     case "ADD_REQUEST": {
       const request: RequestItem = {
@@ -96,6 +119,19 @@ function reducer(state: AppStateShape, action: Action): AppStateShape {
     }
     case "SET_RESPONSE":
       return { ...state, responses: { ...state.responses, [action.requestId]: action.response } };
+    case "HYDRATE": {
+      if (!action.data) return { ...state, hydrated: true };
+      const { collections, requests } = action.data;
+      const firstId = requests[0]?.id ?? null;
+      return {
+        ...state,
+        collections,
+        requests,
+        openTabIds: firstId ? [firstId] : [],
+        activeTabId: firstId,
+        hydrated: true,
+      };
+    }
     default:
       return state;
   }
@@ -110,6 +146,7 @@ function initialState(): AppStateShape {
     activeTabId: requests[0].id,
     activeEditorTab: "params",
     responses: {},
+    hydrated: false,
   };
 }
 
@@ -118,6 +155,23 @@ const DispatchContext = createContext<React.Dispatch<Action> | null>(null);
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, initialState);
+
+  useEffect(() => {
+    loadPersisted()
+      .then((data) => dispatch({ type: "HYDRATE", data }))
+      .catch(() => dispatch({ type: "HYDRATE", data: null }));
+  }, []);
+
+  useEffect(() => {
+    if (!state.hydrated) return;
+    const timeout = setTimeout(() => {
+      savePersisted({ collections: state.collections, requests: state.requests }).catch((err) =>
+        console.error("Falha ao salvar dados", err),
+      );
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [state.hydrated, state.collections, state.requests]);
+
   return (
     <StateContext.Provider value={state}>
       <DispatchContext.Provider value={dispatch}>{children}</DispatchContext.Provider>

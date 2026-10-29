@@ -80,9 +80,23 @@ body {
 }
 
 .request-name {
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.request-delete {
+  visibility: hidden;
+}
+
+.request-list-item:hover .request-delete {
+  visibility: visible;
+}
+
+.collection-actions {
+  display: flex;
+  gap: 2px;
 }
 
 .icon-button {
